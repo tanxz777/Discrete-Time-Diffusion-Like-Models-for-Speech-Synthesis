@@ -1,0 +1,85 @@
+hydra:
+  job:
+    name : 'Hydra_${basename}_eval'
+    chdir: true
+    config:
+      override_dirname:
+        kv_sep: ':'
+        item_sep: '__'
+        exclude_keys:
+          - data
+          - eval.evaluation_mode
+  run:
+    dir: ../hydra_outputs/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+  sweep:
+    dir: ../${hydra.job.name}
+    subdir: ${hydra.job.override_dirname}
+
+basename: Grad-TTS_Hydra
+
+data:
+
+eval:
+  split: test
+  n_timesteps: 10
+  Hydra_training_save: ../../Hydra_${basename}
+  starting_epoch: 0
+  ending_epoch: 1
+  #checkpoint_dir: ${eval.Hydra_training_save}/${hydra:job.override_dirname}/${training.checkpoint_save}
+  checkpoint_dir: ../../${basename}/checkpts/GMM
+  loc_train: ../../${basename}
+  gt_dir: ground_truth
+  cvt_dir: converted
+  epoch_interval: 1
+  evaluation_mode: 'WAVPDFMEL' #'LOSSES'
+  batch_size: 72
+  temperature: 1.5
+  gpu: 1
+  spk: 0
+
+model:
+  spk_emb_dim: 128
+
+  encoder:
+    n_channels: 192
+    filter_channels: 768
+    filter_channels_dp: 256
+    n_layers: 6
+    kernel_size: 3
+    p_dropout: 0.1
+    n_heads: 2
+    window_size: 4
+
+  decoder:
+    dim: 64
+    beta_min: 0.05
+    beta_max: 20.0
+    pe_scale: 1000
+
+  Masking:
+    a: 0.6    #std for GAM and GMM, used in both training and inference. 
+    b: 0.0    #a, b are used only in training in blurring and warm 
+    c: 0
+    d: 0
+    No1_std: ../../Parametric_Masking_3rd/checkpts/std_No1.pth
+
+training:
+  load_encoder: True
+  load_decoder: False
+  train_encoder: False
+  n_timesteps: 10
+  tensorboard_dir: tb
+  start_checkpoint:
+  pre_checkpoint: ../../${basename}/checkpts/a0.02b0.01_${training.start_checkpoint}.pt
+  checkpoint_save: 'checkpoint'
+  test_size: 1
+  batch_size: 48
+  n_epochs: 800
+  learning_rate: 1e-4
+  seed: 37
+  save_every: 1
+  gpu: 0
+  num_workers: 4
+
+

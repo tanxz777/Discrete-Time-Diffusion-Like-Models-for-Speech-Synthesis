@@ -1,0 +1,9 @@
+split: dev
+n_timesteps: 10
+checkpoint: 
+gt_dir: ground_truth
+cvt_dir: converted
+n_evaluations: 500
+epoch_interval: 10
+evaluation_mode: 'LOSSES' #'WAVPDFMEL', 'LOSSES'
+spk: 0
