@@ -5,6 +5,8 @@ This repository is based on original [Grad-TTS implementation by Huawei Noah’s
 Hydra is used for managing Hyperparameters.<br>
 
 ## usage
+### inference
 *Inference* for four different systems:Gaussian Additive Noise, Gaussian Multiplicative Noise, Blurring Noise, Blurring+Gaussian Additive Noise can be done by **1)** renaming diffusion_GAM.py, diffusion_GMM.py, diffusion_blur.py, diffusion_warm.py to diffusion.py in 'Grad-TTS_Hydra/model' folder **2)** choose correponding checkpoint repository name in 'eval.checkpoint_dir' field in Grad-TTS_Hydra/config/config_eval.yaml file  **3)** run ./eval_all.sh <br>
+### training
 *Training* can be done by both replacing the corresponding diffusion_*.py file and changing relevant hyperparameters in 'Grad-TTS_Hydra/config/config.yaml' file.
 
