@@ -8,10 +8,7 @@ hydra:
         item_sep: '__'
         exclude_keys:
           - data
-          - eval.evaluation_mode
-  run:
-    dir: ../hydra_outputs/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
-
+          - eval.evaluation_mode 
   sweep:
     dir: ../${hydra.job.name}
     subdir: ${hydra.job.override_dirname}
@@ -26,17 +23,16 @@ eval:
   Hydra_training_save: ../../Hydra_${basename}
   starting_epoch: 0
   ending_epoch: 1
-  #checkpoint_dir: ${eval.Hydra_training_save}/${hydra:job.override_dirname}/${training.checkpoint_save}
-  checkpoint_dir: ../../${basename}/checkpts/GMM
+  #checkpoint_dir: ${eval.Hydra_training_save}/${hydra:job.override_dirname}/${training.checkpoint_save}  
+  checkpoint_dir: ../../${basename}/checkpts/GAM
   loc_train: ../../${basename}
   gt_dir: ground_truth
   cvt_dir: converted
-  epoch_interval: 1
+  epoch_interval: 10
   evaluation_mode: 'WAVPDFMEL' #'LOSSES'
-  batch_size: 72
-  temperature: 1.5
   gpu: 1
   spk: 0
+  temperature: 1.5
 
 model:
   spk_emb_dim: 128
@@ -58,21 +54,18 @@ model:
     pe_scale: 1000
 
   Masking:
-    a: 0.6    #std for GAM and GMM, used in both training and inference. 
-    b: 0.0    #a, b are used only in training in blurring and warm 
+    a: 0.05
+    b: 0.01
     c: 0
     d: 0
-    No1_std: ../../Parametric_Masking_3rd/checkpts/std_No1.pth
 
 training:
   load_encoder: True
   load_decoder: False
-  train_encoder: False
+  train_encoder: False  
   n_timesteps: 10
   tensorboard_dir: tb
   start_checkpoint:
-  pre_checkpoint: ../../${basename}/checkpts/a0.02b0.01_${training.start_checkpoint}.pt
-  checkpoint_save: 'checkpoint'
   test_size: 1
   batch_size: 48
   n_epochs: 800
@@ -81,5 +74,4 @@ training:
   save_every: 1
   gpu: 0
   num_workers: 4
-
 
