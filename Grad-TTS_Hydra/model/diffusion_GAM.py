@@ -8,8 +8,6 @@
 
 import math
 import torch
-import numpy as np
-from scipy.fftpack import dct, idct
 from torch.distributions.multivariate_normal import MultivariateNormal
 from einops import rearrange
 import matplotlib.pyplot as plot
@@ -89,6 +87,7 @@ class ResnetBlock(BaseModule):
         h = self.block2(h, mask)
         return h + self.res_conv(x * mask)
 
+
 class LinearAttention(BaseModule):
     def __init__(self, dim, heads=4, dim_head=32):
         super(LinearAttention, self).__init__()
@@ -122,6 +121,21 @@ class Residual(BaseModule):
         x = torch.clamp(x, min=-1e3, max=1e3)
         output = self.fn(x, *args, **kwargs) + x
         return output
+
+
+class SinusoidalPosEmb(BaseModule):
+    def __init__(self, dim):
+        super(SinusoidalPosEmb, self).__init__()
+        self.dim = dim
+
+    def forward(self, x, scale=1000):
+        device = x.device
+        half_dim = self.dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, device=device).float() * -emb)
+        emb = scale * x.unsqueeze(1) * emb.unsqueeze(0)
+        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
+        return emb
 
 class GradLogPEstimator2d(BaseModule):
     def __init__(
@@ -274,70 +288,29 @@ class Diffusion(BaseModule):
         self.b = cfg.b
         self.c = cfg.c
         self.d = cfg.d
+        self.l = cfg.l
+        self.p = cfg.p
         self.No1_std = cfg.No1_std       
         self.estimator = GradLogPEstimator2d(self.dim, n_spks=self.n_spks,
                                              spk_emb_dim=self.spk_emb_dim,
-                                            dropout_rate = self.d)
-    def log_scale_t(self, n, sigma_min, sigma_max):
-
-        n_timesteps = self.n_timesteps
-        term = ((n_timesteps - n) / (n_timesteps - 1)) * math.log(sigma_min) + ((n - 1) / (n_timesteps - 1)) * math.log(sigma_max)
-    
-        n_log = 0.5 * torch.exp(2 * term)
-        return n_log  
-
-
+                                             dropout_rate = self.d)
 
     def forward_diffusion(self, X0, mask, mu, n, a):
         device = X0.device
-
-        H = mu.shape[2]
-        W = mu.shape[1]
-
         n_steps = self.n_timesteps
         n = n.view(-1, 1, 1) 
-        
-        n_log = self.log_scale_t(n, self.a, self.b)
-
-        freqs_x = np.pi * np.linspace(0, W - 1, W) / W
-        freqs_y = np.pi * np.linspace(0, H - 1, H) / H
-        Λ = -(freqs_x[:, None]**2 + freqs_y[None, :]**2)
-        X0_np = X0.detach().cpu().numpy().astype(np.float64) 
-        X0_proj = dct(X0_np, axis=1, norm='ortho')
-        X0_proj = dct(X0_proj, axis=2, norm='ortho')
-        X0_proj = np.exp(Λ * n_log.detach().cpu().numpy()) * X0_proj
-
-        X0_recons = idct(X0_proj, axis=1, norm='ortho')
-        X0_recons = idct(X0_recons, axis=2, norm='ortho')
-        
-        X0_recons = torch.from_numpy(X0_recons).to(X0.device).float()
-        
-
-        Xn = (n_steps-n)/n_steps * X0_recons + n/n_steps * mu
-        Xn = torch.where(n == 0, X0, Xn)
-
-        return Xn 
+        Xn = (n_steps-n)/n_steps*X0 + n/n_steps* (mu + torch.randn_like(mu, device=mu.device) * a)
+        return Xn * mask
 
 
     @torch.no_grad()
     def reverse_diffusion(self, z, mask, mu, n_timesteps, stoc=False, spk=None):
-        Xn = mu * mask
-        os.makedirs(f'reverse_pass', exist_ok=True)
+        Xn = mu * mask + torch.randn_like(mu, device=mu.device) *self.a
         for n in range(n_timesteps):
-            n = n_timesteps - n #[n_timesteps, n_timesteps-1, ... ,1]
+            n = n_timesteps - n 
             n = n * torch.ones(z.shape[0], dtype=z.dtype, device=z.device)
-
-            X0_est  = self.estimator(Xn, mask, mu, spk)  #input N, Unet actually predicts M(N-1)
-            Dn = self.forward_diffusion(X0_est, mask, mu, n, self.a)
-            Dnm1 = self.forward_diffusion(X0_est, mask, mu, n-1, self.a)
-            Xn = Xn - Dn + Dnm1
-
-
-            #for plotting
-            #i = int(n[0].item())
-            #pt_to_pdf(Xn[0].cpu(), f'reverse_pass/Xn_{i}.pdf' , vmin=-12.5, vmax=0.0)
-            #pt_to_pdf(X0_est[0].cpu(), f'reverse_pass/X0_est{i}.pdf' , vmin=-12.5, vmax=0.0)
-
+            X0_est  = self.estimator(Xn, mask, mu, spk)  #input N, Unet actually predicts M(N-1) 
+            Xn = self.forward_diffusion(X0_est, mask, mu, n-1, self.a)
         return Xn
 
     @torch.no_grad()
@@ -348,24 +321,18 @@ class Diffusion(BaseModule):
         device = X0.device
         dropout_rate=self.d
         n_timesteps = self.n_timesteps 
-        
-        #Cutout
-        Mask = Cutout(n_holes=int(X0.shape[2]/80), length=self.c)
-        Mask = Mask(X0.shape).to(device)
+        #Mask = Cutout(n_holes=int(X0.shape[2]/80), length=self.c)
+        #Mask = Mask(X0.shape).to(device)
+        #X0 = X0*Mask
         #X0 = cutout_along_dimension(X0, l=self.l, cutout_percentage=self.p)
-        X0_Cutout = Mask*X0
-        
-        #forward_pass = self.forward_plot(X0_Cutout, mask, mu, self.a)
-
-
-        Xn = self.forward_diffusion(X0_Cutout, mask, mu, n, self.a)
+        Xn = self.forward_diffusion(X0, mask, mu, n, self.a)
+        #X_forward = self.forward_plot(X0, mask, mu, n, self.a)
         
         dropout = torch.nn.Dropout(p=dropout_rate)
         mu_dropout = dropout(mu)
         X0_est = self.estimator(Xn, mask, mu_dropout, spk)   #Despite input N, it actually predicts M(n_steps*(N-1))
-           
+            
         loss = torch.sum((X0 - X0_est)**2) / (torch.sum(mask)*self.n_feats)
-
         return loss, Xn
 
     def compute_loss(self, x0, mask, mu, spk=None, offset=1e-5):
