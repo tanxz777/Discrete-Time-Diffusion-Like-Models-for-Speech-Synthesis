@@ -288,9 +288,6 @@ class Diffusion(BaseModule):
         self.b = cfg.b
         self.c = cfg.c
         self.d = cfg.d
-        self.l = cfg.l
-        self.p = cfg.p
-        self.No1_std = cfg.No1_std       
         self.estimator = GradLogPEstimator2d(self.dim, n_spks=self.n_spks,
                                              spk_emb_dim=self.spk_emb_dim,
                                              dropout_rate = self.d)
